@@ -1,0 +1,39 @@
+### Session status
+GET http://localhost:4000/auth/me
+
+### Start Google login
+GET http://localhost:4000/auth/google
+
+### Connect Gmail after login
+GET http://localhost:4000/api/gmail/connect
+
+### Unified inbox search
+GET http://localhost:4000/api/messages?q=campaign&provider=gmail
+
+### Gmail sync
+POST http://localhost:4000/api/gmail/sync
+Content-Type: application/json
+
+{
+  "maxResults": 15
+}
+
+### Gmail message detail
+GET http://localhost:4000/api/gmail/message/msg_123
+
+### AI summary
+POST http://localhost:4000/api/ai/summary
+Content-Type: application/json
+
+{
+  "messageId": "replace-with-message-id"
+}
+
+### AI reply suggestions
+POST http://localhost:4000/api/ai/reply
+Content-Type: application/json
+
+{
+  "messageId": "replace-with-message-id",
+  "tone": "professional"
+}

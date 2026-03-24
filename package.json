@@ -1,0 +1,23 @@
+{
+  "name": "unified-social-inbox",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c magenta,cyan \"npm run backend\" \"npm run frontend\"",
+    "backend": "npm run dev --workspace backend",
+    "frontend": "npm run dev --workspace frontend",
+    "build": "npm run build --workspace frontend && npm run build --workspace backend",
+    "start": "concurrently -n frontend,backend -c cyan,magenta \"npm run start --workspace frontend\" \"npm run start --workspace backend\"",
+    "lint": "npm run lint --workspace frontend",
+    "prisma:generate": "npm run prisma:generate --workspace backend",
+    "prisma:migrate": "npm run prisma:migrate --workspace backend",
+    "prisma:deploy": "npm run prisma:deploy --workspace backend",
+    "postinstall": "npm run prisma:generate"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
