@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-
-const apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+import { API_BASE_URL } from "@/lib/api";
 
 export function BackendConnectionCheck() {
   const hasCheckedConnection = useRef(false);
@@ -17,7 +15,7 @@ export function BackendConnectionCheck() {
 
     const abortController = new AbortController();
 
-    fetch(`${apiBaseUrl}/api/test`, {
+    fetch(`${API_BASE_URL}/api/test`, {
       method: "GET",
       credentials: "include",
       signal: abortController.signal,
