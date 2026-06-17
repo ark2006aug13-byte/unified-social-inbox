@@ -14,7 +14,7 @@
     "lint": "npm run lint --workspace frontend",
     "prisma:generate": "npm run prisma:generate --workspace backend",
     "prisma:migrate": "npm run prisma:migrate --workspace backend",
-    "prisma:deploy": "npm run prisma:deploy --workspace backend",
+    "prisma:deploy": "npm run prisma:deploy --workspace backend"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
