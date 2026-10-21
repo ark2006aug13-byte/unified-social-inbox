@@ -1,14 +1,6 @@
-import { PROVIDERS } from "../constants/providers.js";
 import { isDatabaseAvailable, prisma } from "../lib/prisma.js";
 import { listIntegrations } from "../services/integrationRegistry.js";
-
-const keyToProvider = {
-  gmail: PROVIDERS.GMAIL,
-  instagram: PROVIDERS.INSTAGRAM,
-  whatsapp: PROVIDERS.WHATSAPP,
-  "facebook-messenger": PROVIDERS.FACEBOOK_MESSENGER,
-  twitter: PROVIDERS.TWITTER,
-};
+import { env } from "../config/env.js";
 
 export async function getIntegrationStatus(req, res, next) {
   try {
@@ -21,18 +13,25 @@ export async function getIntegrationStatus(req, res, next) {
       : [];
 
     const byProvider = new Map(accounts.map((account) => [account.provider, account]));
+
     const integrations = listIntegrations().map((integration) => {
-      const provider = keyToProvider[integration.key];
-      const connected = provider ? byProvider.get(provider) : null;
+      const connected = byProvider.get(integration.provider);
 
       return {
-        ...integration,
+        key: integration.key,
+        name: integration.name,
+        description: integration.description,
+        status: integration.status,
         connected: Boolean(connected),
         connectedAt: connected?.createdAt || null,
+        expiresAt: connected?.expiry || null,
       };
     });
 
-    return res.json({ integrations });
+    return res.json({
+      integrations,
+      demoMode: env.demoMode,
+    });
   } catch (error) {
     return next(error);
   }

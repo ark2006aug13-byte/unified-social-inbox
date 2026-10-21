@@ -1,20 +1,28 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCcw, Search, Sparkles } from "lucide-react";
-import { aiApi, gmailApi, messageApi } from "@/lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Inbox, LogIn, RefreshCcw, WifiOff } from "lucide-react";
+import { aiApi, gmailApi, messageApi, ApiError } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import type { Message, ReplyOption, SummaryResponse } from "@/lib/types";
 import { useSession } from "@/hooks/use-session";
+import { useToast } from "@/components/providers/toast-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { MessageDetail } from "@/components/inbox/message-detail";
-import { InboxLayout } from "@/components/inbox/inbox-layout";
-import { MessageList } from "@/components/inbox/message-list";
+import { ErrorState } from "@/components/ui/error-state";
+import { AiCopilot } from "@/components/inbox/ai-copilot";
+import { InboxFilters, SearchField } from "@/components/inbox/inbox-filters";
+import { MessageList, MessageListSkeleton } from "@/components/inbox/message-list";
+import { MessageDetail, MessageDetailSkeleton } from "@/components/inbox/message-detail";
 
-const categories = ["all", "brand_deal", "support", "sales", "operations"];
-const providers = ["all", "gmail", "instagram", "whatsapp", "facebook", "twitter"];
+function normalizeUrgency(value?: string | null): "low" | "medium" | "high" {
+  if (value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+
+  return "medium";
+}
 
 export function InboxWorkspace({
   title,
@@ -25,7 +33,9 @@ export function InboxWorkspace({
   subtitle: string;
   lockedProvider?: string;
 }) {
-  const { session, loading, login } = useSession();
+  const { session, loading: sessionLoading, login, refresh } = useSession();
+  const toast = useToast();
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
@@ -37,107 +47,212 @@ export function InboxWorkspace({
   const [category, setCategory] = useState("all");
   const [provider, setProvider] = useState(lockedProvider || "all");
   const [tone, setTone] = useState("professional");
+
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [replyLoading, setReplyLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  const searchTimeout = useRef<number | null>(null);
 
   const gmailConnected = useMemo(
     () =>
       Boolean(
-        session?.connectedAccounts?.some((account) => account.provider.toLowerCase() === "gmail"),
+        session?.connectedAccounts?.some(
+          (account) => account.provider.toLowerCase() === "gmail",
+        ),
       ),
     [session?.connectedAccounts],
   );
 
+  // Debounce the search so typing does not fire a request per keystroke.
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => setSearch(searchInput), 250);
-    return () => window.clearTimeout(timeoutId);
+    if (searchTimeout.current) {
+      window.clearTimeout(searchTimeout.current);
+    }
+
+    searchTimeout.current = window.setTimeout(() => setSearch(searchInput), 300);
+
+    return () => {
+      if (searchTimeout.current) {
+        window.clearTimeout(searchTimeout.current);
+      }
+    };
   }, [searchInput]);
 
   useEffect(() => {
     setProvider(lockedProvider || "all");
   }, [lockedProvider]);
 
-  const fetchMessages = useCallback(async () => {
-    if (!session?.authenticated) {
-      return;
-    }
+  const fetchMessages = useCallback(
+    async (options: { silent?: boolean } = {}) => {
+      if (!session?.authenticated) {
+        return;
+      }
 
-    setLoadingMessages(true);
-    try {
-      const response = await messageApi.list({
-        q: search,
-        provider: lockedProvider || (provider === "all" ? undefined : provider),
-        category: category === "all" ? undefined : category,
-      });
-      setMessages(response.messages);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load inbox messages.");
-    } finally {
-      setLoadingMessages(false);
-    }
-  }, [session?.authenticated, search, lockedProvider, provider, category]);
+      if (!options.silent) {
+        setLoadingMessages(true);
+      }
+
+      try {
+        const response = await messageApi.list({
+          q: search || undefined,
+          provider:
+            lockedProvider || (provider === "all" ? undefined : provider),
+          category: category === "all" ? undefined : category,
+        });
+
+        setMessages(response.messages ?? []);
+        setListError(null);
+      } catch (error) {
+        const message =
+          error instanceof ApiError
+            ? error.message
+            : "Could not load conversations.";
+
+        setListError(message);
+        setMessages([]);
+      } finally {
+        setLoadingMessages(false);
+      }
+    },
+    [session?.authenticated, search, lockedProvider, provider, category],
+  );
 
   useEffect(() => {
     void fetchMessages();
   }, [fetchMessages]);
 
+  // Keep the selected conversation valid when the list changes.
   useEffect(() => {
-    if (!messages.length) {
+    if (messages.length === 0) {
       setSelectedId(null);
       setSelectedMessage(null);
       return;
     }
 
-    if (!selectedId || !messages.find((message) => message.id === selectedId)) {
+    if (!selectedId || !messages.some((message) => message.id === selectedId)) {
       setSelectedId(messages[0].id);
     }
   }, [messages, selectedId]);
 
+  // Load the full conversation for the selected message.
   useEffect(() => {
     if (!selectedId || !session?.authenticated) {
       return;
     }
 
-    void messageApi
+    let cancelled = false;
+    setLoadingDetail(true);
+    setDetailError(null);
+
+    messageApi
       .get(selectedId)
       .then((response) => {
+        if (cancelled) {
+          return;
+        }
+
         setSelectedMessage(response.message);
         setSummary(
           response.message.aiSummary
             ? {
                 summary: response.message.aiSummary,
                 category: response.message.aiCategory || "other",
-                urgency: "medium",
+                urgency: normalizeUrgency(response.message.urgency),
                 actionItems: [],
+                persisted: true,
               }
             : null,
         );
         setReplies([]);
         setReplyDraft("");
       })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : "Failed to load message detail.");
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        setSelectedMessage(null);
+        setDetailError(
+          error instanceof ApiError ? error.message : "Could not load this message.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingDetail(false);
+        }
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedId, session?.authenticated]);
 
+  // Live updates. The backend only emits for explicit syncs, so this cannot
+  // feed back into another request.
   useEffect(() => {
     if (!session?.authenticated) {
       return;
     }
 
     const socket = getSocket();
+
     const handleRefresh = () => {
-      void fetchMessages();
+      void fetchMessages({ silent: true });
     };
 
     socket.on("messages:updated", handleRefresh);
+
     return () => {
       socket.off("messages:updated", handleRefresh);
     };
   }, [session?.authenticated, fetchMessages]);
+
+  // Keyboard navigation between conversations.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (event.key !== "j" && event.key !== "k") {
+        return;
+      }
+
+      if (messages.length === 0) {
+        return;
+      }
+
+      event.preventDefault();
+      const currentIndex = messages.findIndex(
+        (message) => message.id === selectedId,
+      );
+      const delta = event.key === "j" ? 1 : -1;
+      const nextIndex = Math.min(
+        Math.max(currentIndex + delta, 0),
+        messages.length - 1,
+      );
+
+      const next = messages[nextIndex];
+      if (next) {
+        setSelectedId(next.id);
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [messages, selectedId]);
 
   const handleSummary = async () => {
     if (!selectedMessage) {
@@ -145,6 +260,7 @@ export function InboxWorkspace({
     }
 
     setSummaryLoading(true);
+
     try {
       const response = await aiApi.summary({
         messageId: selectedMessage.id,
@@ -153,10 +269,20 @@ export function InboxWorkspace({
         sender: selectedMessage.sender,
         subject: selectedMessage.subject || undefined,
       });
+
       setSummary(response);
-      await fetchMessages();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to summarize the message.");
+      toast.success(
+        "Summary generated",
+        response.persisted
+          ? "The classification was saved for this message."
+          : "Generated for this preview. Connect Gmail to store it.",
+      );
+      void fetchMessages({ silent: true });
+    } catch (error) {
+      toast.error(
+        "Could not generate a summary",
+        error instanceof ApiError ? error.message : "Please try again in a moment.",
+      );
     } finally {
       setSummaryLoading(false);
     }
@@ -168,176 +294,230 @@ export function InboxWorkspace({
     }
 
     setReplyLoading(true);
+
     try {
       const response = await aiApi.reply({
+        messageId: selectedMessage.id,
         message: selectedMessage.body || selectedMessage.snippet || "",
         tone,
       });
-      setReplies(response.suggestions || []);
-      setReplyDraft(response.reply || response.suggestions?.[0]?.body || "");
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to generate reply suggestions.");
+
+      const suggestions = response.suggestions ?? [];
+
+      setReplies(suggestions);
+      setReplyDraft(response.reply || suggestions[0]?.body || "");
+      toast.success("Drafts ready", `${suggestions.length} options generated.`);
+    } catch (error) {
+      toast.error(
+        "Could not draft a reply",
+        error instanceof ApiError ? error.message : "Please try again in a moment.",
+      );
     } finally {
       setReplyLoading(false);
     }
   };
 
   const handleSync = async () => {
+    setSyncing(true);
+
     try {
-      await gmailApi.sync();
-      await fetchMessages();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sync Gmail.");
+      const response = await gmailApi.sync(25);
+      await fetchMessages({ silent: true });
+      toast.success(
+        "Gmail synced",
+        `${response.synced} new message${response.synced === 1 ? "" : "s"} imported.`,
+      );
+    } catch (error) {
+      toast.error(
+        "Sync failed",
+        error instanceof ApiError
+          ? error.message
+          : "Gmail could not be reached. Try reconnecting the account.",
+      );
+    } finally {
+      setSyncing(false);
     }
   };
 
-  if (loading) {
-    return <Card className="min-h-[420px] animate-pulse" />;
+  if (sessionLoading) {
+    return (
+      <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)_380px]">
+        <Card className="h-[520px] animate-pulse" />
+        <Card className="h-[520px] animate-pulse" />
+        <Card className="h-[520px] animate-pulse" />
+      </div>
+    );
   }
 
   if (!session?.authenticated) {
     return (
-      <Card className="space-y-4">
-        <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
-          Authentication required
-        </p>
-        <h3 className="text-3xl font-semibold tracking-tight text-slate-950 dark:text-slate-100">
-          Sign in before opening the inbox
-        </h3>
-        <p className="max-w-2xl text-sm leading-7 text-slate-600 dark:text-slate-400">
-          Gmail connection, message sync, AI summaries, and live updates are all tied to the secure backend session.
-        </p>
-        <Button onClick={login}>Login with Google</Button>
+      <Card className="mx-auto max-w-2xl space-y-4 py-10 text-center">
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+          <LogIn className="h-6 w-6" />
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+            Authentication required
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl dark:text-slate-100">
+            Sign in to open your unified inbox
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600 dark:text-slate-400">
+            Gmail sync, AI summaries and live updates are all tied to your
+            secure backend session.
+          </p>
+        </div>
+        <Button onClick={login} size="lg">
+          Continue with Google
+        </Button>
       </Card>
     );
   }
 
   if (lockedProvider === "gmail" && !gmailConnected) {
     return (
-      <Card className="space-y-4">
-        <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
-          Gmail required
-        </p>
-        <h3 className="text-3xl font-semibold tracking-tight text-slate-950 dark:text-slate-100">
-          Connect Gmail to start importing messages
-        </h3>
-        <p className="max-w-2xl text-sm leading-7 text-slate-600 dark:text-slate-400">
-          The Gmail integration requests read-only access, stores encrypted provider tokens, and syncs messages into PostgreSQL for the unified inbox.
-        </p>
-        <Button onClick={() => gmailApi.connect()}>Connect Gmail</Button>
+      <Card className="mx-auto max-w-2xl space-y-4 py-10 text-center">
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-300">
+          <WifiOff className="h-6 w-6" />
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+            Gmail required
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl dark:text-slate-100">
+            Connect Gmail to import messages
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600 dark:text-slate-400">
+            The Gmail integration requests read-only access, encrypts the
+            provider tokens and syncs messages into the unified inbox.
+          </p>
+        </div>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button onClick={() => gmailApi.connect()} size="lg">
+            Connect Gmail
+          </Button>
+          <Button variant="secondary" onClick={() => void refresh()}>
+            Refresh connection state
+          </Button>
+        </div>
       </Card>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <Card className="space-y-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+    <div className="space-y-4">
+      <Card className="space-y-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
               {lockedProvider ? "Provider view" : "Unified inbox"}
             </p>
-            <h3 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950 dark:text-slate-100">
+            <h2 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-950 dark:text-slate-100">
               {title}
-            </h3>
-            <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-600 dark:text-slate-400">
+            </h2>
+            <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-400">
               {subtitle}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 dark:border-slate-800 dark:bg-slate-900">
-              <Search className="h-4 w-4 text-slate-400" />
-              <input
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Search sender, subject, or body"
-                className="w-64 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200"
-              />
+
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[320px] lg:max-w-md">
+            <SearchField value={searchInput} onChange={setSearchInput} />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void handleSync()}
+                loading={syncing}
+                className="flex-1"
+              >
+                {!syncing ? <RefreshCcw className="h-3.5 w-3.5" /> : null}
+                {syncing ? "Syncing..." : "Sync Gmail"}
+              </Button>
+              <span className="hidden text-[11px] text-slate-400 dark:text-slate-500 sm:inline">
+                Press{" "}
+                <kbd className="rounded border border-slate-300 px-1 font-mono dark:border-slate-700">
+                  j
+                </kbd>
+                /
+                <kbd className="rounded border border-slate-300 px-1 font-mono dark:border-slate-700">
+                  k
+                </kbd>{" "}
+                to move
+              </span>
             </div>
-            <Button variant="secondary" className="gap-2" onClick={handleSync}>
-              <RefreshCcw className="h-4 w-4" />
-              Sync Gmail
-            </Button>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {!lockedProvider
-            ? providers.map((item) => (
-                <button
-                  key={item}
-                  onClick={() => setProvider(item)}
-                  className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                    provider === item
-                      ? "bg-slate-950 text-white dark:bg-white dark:text-slate-950"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-                  }`}
-                >
-                  {item === "all" ? "All platforms" : item}
-                </button>
-              ))
-            : null}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {categories.map((item) => (
-            <button
-              key={item}
-              onClick={() => setCategory(item)}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                category === item
-                  ? "bg-slate-950 text-white dark:bg-white dark:text-slate-950"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-              }`}
-            >
-              {item === "all" ? "All categories" : item}
-            </button>
-          ))}
-        </div>
-
-        {error ? (
-          <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-600 dark:bg-rose-950/40 dark:text-rose-300">
-            {error}
-          </div>
-        ) : null}
+        <InboxFilters
+          provider={provider}
+          category={category}
+          onProviderChange={setProvider}
+          onCategoryChange={setCategory}
+          lockedProvider={lockedProvider}
+          resultCount={messages.length}
+        />
       </Card>
 
-      {!messages.length && !loadingMessages ? (
-        <div className="space-y-4">
-          <EmptyState
-            title="No messages yet"
-            description="Connect Gmail and run a sync to start populating the unified inbox."
-          />
-          {!gmailConnected ? (
-            <div className="flex justify-center">
-              <Button onClick={() => gmailApi.connect()}>Connect Gmail</Button>
-            </div>
-          ) : null}
-        </div>
+      {listError ? (
+        <ErrorState
+          title="Could not load the inbox"
+          description={listError}
+          onRetry={() => void fetchMessages()}
+        />
       ) : (
-        <InboxLayout
-          list={
-            <>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
-                  Message list
-                </p>
-                <h4 className="mt-2 text-xl font-semibold tracking-tight text-slate-950 dark:text-slate-100">
-                  {loadingMessages ? "Refreshing..." : `${messages.length} conversation${messages.length === 1 ? "" : "s"}`}
-                </h4>
-              </div>
-              <div className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:bg-slate-900 dark:text-slate-400">
-                <Sparkles className="h-3.5 w-3.5" />
-                Live
-              </div>
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)_minmax(340px,400px)]">
+          <Card
+            flush
+            className="max-h-[calc(100vh-16rem)] overflow-hidden p-4 xl:sticky xl:top-5"
+          >
+            <div className="overflow-y-auto pr-1">
+              {loadingMessages && messages.length === 0 ? (
+                <MessageListSkeleton />
+              ) : (
+                <MessageList
+                  messages={messages}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                />
+              )}
             </div>
-            <MessageList messages={messages} selectedId={selectedId} onSelect={setSelectedId} />
-            </>
-          }
-          preview={
-            <MessageDetail
+          </Card>
+
+          <div className="min-w-0 space-y-4">
+            {detailError ? (
+              <ErrorState
+                title="Could not load this conversation"
+                description={detailError}
+                onRetry={() => setSelectedId((current) => current)}
+                retryLabel="Reload message"
+              />
+            ) : (
+              <MessageDetail
+                message={selectedMessage}
+                loading={loadingDetail && !selectedMessage}
+              />
+            )}
+
+            {messages.length === 0 && !loadingMessages ? (
+              <EmptyState
+                icon={<Inbox className="h-6 w-6" />}
+                title="No conversations yet"
+                description={
+                  gmailConnected
+                    ? "Run a sync to pull your latest Gmail messages into the unified inbox."
+                    : "Connect Gmail and run a sync to start populating the unified inbox."
+                }
+                action={
+                  gmailConnected
+                    ? { label: "Sync Gmail", onClick: () => void handleSync() }
+                    : { label: "Connect Gmail", onClick: () => gmailApi.connect() }
+                }
+              />
+            ) : null}
+          </div>
+
+          <div className="min-w-0 xl:sticky xl:top-5">
+            <AiCopilot
               message={selectedMessage}
               summary={summary}
               replies={replies}
@@ -345,13 +525,14 @@ export function InboxWorkspace({
               summaryLoading={summaryLoading}
               replyLoading={replyLoading}
               tone={tone}
-              onReplyDraftChange={setReplyDraft}
               onToneChange={setTone}
-              onSummarize={handleSummary}
-              onReply={handleReply}
+              onReplyDraftChange={setReplyDraft}
+              onSummarize={() => void handleSummary()}
+              onReply={() => void handleReply()}
+              disabled={!selectedMessage}
             />
-          }
-        />
+          </div>
+        </div>
       )}
     </div>
   );

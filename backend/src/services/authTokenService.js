@@ -19,19 +19,38 @@ export function verifySessionToken(token) {
   return jwt.verify(token, env.jwtSecret);
 }
 
-export function setSessionCookie(res, user) {
-  res.cookie(env.sessionCookieName, signSessionToken(user), {
+function cookieOptions() {
+  return {
     httpOnly: true,
-    secure: env.isProduction,
-    sameSite: "lax",
+    secure: env.useSecureCookies,
+    sameSite: env.crossSiteCookies ? "none" : "lax",
+    path: "/",
     maxAge: SESSION_TTL_MS,
-  });
+  };
+}
+
+export function setSessionCookie(res, user) {
+  res.cookie(env.sessionCookieName, signSessionToken(user), cookieOptions());
 }
 
 export function clearSessionCookie(res) {
   res.clearCookie(env.sessionCookieName, {
     httpOnly: true,
-    secure: env.isProduction,
-    sameSite: "lax",
+    secure: env.useSecureCookies,
+    sameSite: env.crossSiteCookies ? "none" : "lax",
+    path: "/",
+  });
+}
+
+/**
+ * Removes the express-session cookie so a stale session id is not sent back
+ * to the server after a logout.
+ */
+export function clearExpressSessionCookie(res) {
+  res.clearCookie(`${env.sessionCookieName}_state`, {
+    httpOnly: true,
+    secure: env.useSecureCookies,
+    sameSite: env.crossSiteCookies ? "none" : "lax",
+    path: "/",
   });
 }

@@ -7,7 +7,11 @@ import { PlaceholderIntegration } from "./integrations/placeholderIntegration.js
 const registry = new Map([
   [
     PROVIDERS.GMAIL,
-    new GmailIntegration(PROVIDER_META[PROVIDERS.GMAIL], syncGmailMessages, buildGmailConnectUrl),
+    new GmailIntegration(
+      PROVIDER_META[PROVIDERS.GMAIL],
+      syncGmailMessages,
+      buildGmailConnectUrl,
+    ),
   ],
   [
     PROVIDERS.INSTAGRAM,
@@ -27,8 +31,11 @@ const registry = new Map([
   ],
 ]);
 
+/**
+ * Returns the integration for a provider constant (e.g. `PROVIDERS.GMAIL`).
+ */
 export function getIntegration(provider) {
-  return registry.get(provider);
+  return registry.get(provider) || null;
 }
 
 export function listIntegrations() {

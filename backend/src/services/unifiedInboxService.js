@@ -1,18 +1,46 @@
-import { syncGmailMessages } from "./gmailService.js";
+import { listStoredGmailMessages } from "./gmailService.js";
 import { listFacebookMessages } from "./facebookService.js";
 import { listInstagramMessages } from "./instagramService.js";
 import { logger } from "../utils/logger.js";
 import { listTwitterMessages } from "./twitterService.js";
 import { listWhatsAppMessages } from "./whatsappService.js";
+import { env } from "../config/env.js";
+import { getMessageById } from "./messageService.js";
 
-function normalizeProvider(provider) {
-  const value = String(provider || "").toLowerCase();
+/**
+ * Maps a provider filter onto the canonical lowercase provider key.
+ * Returns `null` when no provider filter is applied - an empty string must
+ * never fall back to a specific provider, otherwise "all channels" silently
+ * becomes "gmail only".
+ */
+export function normalizeProvider(provider) {
+  const value = String(provider || "").trim().toLowerCase();
+
+  if (!value || value === "all") {
+    return null;
+  }
 
   if (value === "facebook_messenger" || value === "facebook-messenger") {
     return "facebook";
   }
 
-  return value || "gmail";
+  if (value === "gmail" || value === "google") {
+    return "gmail";
+  }
+
+  if (value === "instagram") {
+    return "instagram";
+  }
+
+  if (value === "whatsapp") {
+    return "whatsapp";
+  }
+
+  if (value === "twitter" || value === "x") {
+    return "twitter";
+  }
+
+  return value;
 }
 
 function normalizeTimestamp(value) {
@@ -20,7 +48,8 @@ function normalizeTimestamp(value) {
     return new Date().toISOString();
   }
 
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
 }
 
 function normalizeConversation(message, timestamp) {
@@ -47,7 +76,7 @@ function normalizeConversation(message, timestamp) {
 
 function normalizeMessage(message) {
   const timestamp = normalizeTimestamp(message.timestamp);
-  const provider = normalizeProvider(message.provider || message.platform);
+  const provider = normalizeProvider(message.provider || message.platform) || "gmail";
   const body = message.body || message.message || message.snippet || "";
   const externalId = message.externalId || message.id;
 
@@ -68,6 +97,7 @@ function normalizeMessage(message) {
     isRead: Boolean(message.isRead),
     aiCategory: message.aiCategory || null,
     aiSummary: message.aiSummary || null,
+    urgency: message.urgency || null,
     unreadCount:
       typeof message.unreadCount === "number" ? message.unreadCount : message.isRead ? 0 : 1,
     conversation: normalizeConversation(message, timestamp),
@@ -76,11 +106,11 @@ function normalizeMessage(message) {
 
 function filterMessages(messages, filters = {}) {
   const query = String(filters.query || "").trim().toLowerCase();
-  const provider = normalizeProvider(filters.provider || "");
+  const provider = normalizeProvider(filters.provider);
   const category = String(filters.category || "").trim().toLowerCase();
 
   return messages.filter((message) => {
-    if (provider && provider !== "all" && message.provider !== provider) {
+    if (provider && message.provider !== provider) {
       return false;
     }
 
@@ -107,53 +137,99 @@ function filterMessages(messages, filters = {}) {
   });
 }
 
-export async function listUnifiedMessages(userId, filters = {}, runtime = {}) {
-  const sources = [];
-
-  try {
-    const gmailMessages = await syncGmailMessages(
-      userId,
-      {
-        maxResults: Number(filters.limit || 10),
-        query: filters.query || "",
-      },
-      runtime,
-    );
-    sources.push(gmailMessages.map(normalizeMessage));
-  } catch (error) {
-    logger.warn("unified_inbox_gmail_unavailable", {
-      userId,
-      details: error instanceof Error ? error.message : "Unknown Gmail inbox error.",
-    });
+/**
+ * Placeholder conversations for the providers that are not implemented yet.
+ * They are only served when demo mode is explicitly enabled so production
+ * tenants never see fabricated conversations.
+ */
+async function listPlaceholderMessages() {
+  if (!env.demoMode) {
+    return [];
   }
 
-  const [instagramMessages, whatsappMessages, facebookMessages, twitterMessages] = await Promise.all([
-    listInstagramMessages(userId),
-    listWhatsAppMessages(userId),
-    listFacebookMessages(userId),
-    listTwitterMessages(userId),
-  ]);
+  const [instagramMessages, whatsappMessages, facebookMessages, twitterMessages] =
+    await Promise.all([
+      listInstagramMessages(),
+      listWhatsAppMessages(),
+      listFacebookMessages(),
+      listTwitterMessages(),
+    ]);
 
-  sources.push(
-    instagramMessages.map(normalizeMessage),
-    whatsappMessages.map(normalizeMessage),
-    facebookMessages.map(normalizeMessage),
-    twitterMessages.map(normalizeMessage),
-  );
-
-  const combined = filterMessages(sources.flat(), filters).sort(
-    (left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime(),
-  );
-
-  return combined.slice(0, Number(filters.limit || 50));
+  return [
+    ...instagramMessages,
+    ...whatsappMessages,
+    ...facebookMessages,
+    ...twitterMessages,
+  ];
 }
 
+export async function listUnifiedMessages(userId, filters = {}, runtime = {}) {
+  const limit = Math.min(Number(filters.limit) || 50, 200);
+  const providerFilter = normalizeProvider(filters.provider);
+  const query = filters.query || "";
+
+  const sources = [];
+
+  const shouldLoadGmail = !providerFilter || providerFilter === "gmail";
+
+  if (shouldLoadGmail) {
+    try {
+      const gmailMessages = await listStoredGmailMessages(
+        userId,
+        { limit, query },
+        runtime,
+      );
+      sources.push(gmailMessages.map(normalizeMessage));
+    } catch (error) {
+      logger.warn("unified_inbox_gmail_unavailable", {
+        userId,
+        details: error instanceof Error ? error.message : "Unknown Gmail inbox error.",
+      });
+    }
+  }
+
+  if (!providerFilter || providerFilter !== "gmail") {
+    try {
+      const placeholderMessages = await listPlaceholderMessages();
+      const filtered = providerFilter
+        ? placeholderMessages.filter(
+            (message) => normalizeProvider(message.provider) === providerFilter,
+          )
+        : placeholderMessages;
+      sources.push(filtered.map(normalizeMessage));
+    } catch (error) {
+      logger.warn("unified_inbox_placeholder_unavailable", {
+        userId,
+        details:
+          error instanceof Error
+            ? error.message
+            : "Unknown placeholder inbox error.",
+      });
+    }
+  }
+
+  const combined = filterMessages(sources.flat(), filters).sort(
+    (left, right) =>
+      new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime(),
+  );
+
+  return combined.slice(0, limit);
+}
+
+/**
+ * Reads a single conversation. Uses the stored message first so opening a
+ * message does not trigger a full mailbox sync.
+ */
 export async function getUnifiedMessageById(userId, messageId, runtime = {}) {
+  const stored = await getMessageById(userId, messageId);
+
+  if (stored) {
+    return normalizeMessage(stored);
+  }
+
   const messages = await listUnifiedMessages(
     userId,
-    {
-      limit: 100,
-    },
+    { limit: 100 },
     runtime,
   );
 

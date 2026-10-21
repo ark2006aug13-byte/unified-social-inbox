@@ -4,6 +4,7 @@ import {
   prisma,
 } from "../lib/prisma.js";
 import {
+  clearExpressSessionCookie,
   clearSessionCookie,
   setSessionCookie,
 } from "../services/authTokenService.js";
@@ -21,8 +22,6 @@ import {
 import { serializeConnectedAccount } from "../services/messageService.js";
 import { ApiError } from "../utils/apiError.js";
 import { logger } from "../utils/logger.js";
-
-const FRONTEND_DASHBOARD_URL = "http://localhost:3000/dashboard";
 
 function getErrorMessage(error) {
   if (error instanceof ApiError) {
@@ -166,6 +165,13 @@ export async function handleGoogleCallback(req, res) {
       typeof req.query.state === "string" ? req.query.state : undefined,
     );
 
+    if (!state) {
+      throw new ApiError(
+        400,
+        "Invalid or expired OAuth state. Please restart the sign-in flow.",
+      );
+    }
+
     let tokens;
     try {
       tokens = await exchangeCodeForTokens(code);
@@ -219,7 +225,7 @@ export async function handleGoogleCallback(req, res) {
       }
 
       try {
-        await syncGmailMessages(state.userId, { maxResults: 10 });
+        await syncGmailMessages(state.userId, { maxResults: 25, emit: false });
       } catch (error) {
         logger.warn("gmail_initial_sync_failed", {
           userId: state.userId,
@@ -229,9 +235,12 @@ export async function handleGoogleCallback(req, res) {
 
       await saveRequestSession(req);
 
-      console.log("[oauth] gmail connect success", {
-        userId: state.userId,
-        email: profile.email,
+      // Re-issue the session cookie so the browser keeps a valid auth cookie
+      // even if the original one expired during the OAuth round trip.
+      setSessionCookie(res, {
+        id: state.userId,
+        email: profile.email || "",
+        name: profile.name || profile.email || "Google User",
       });
 
       logger.info("google_oauth_success", {
@@ -260,7 +269,7 @@ export async function handleGoogleCallback(req, res) {
     }
 
     try {
-      await syncGmailMessages(user.id, { maxResults: 10 });
+      await syncGmailMessages(user.id, { maxResults: 25, emit: false });
     } catch (error) {
       logger.warn("gmail_login_sync_failed", {
         userId: user.id,
@@ -271,19 +280,13 @@ export async function handleGoogleCallback(req, res) {
     await saveRequestSession(req);
     setSessionCookie(res, user);
 
-    console.log("[oauth] login success", {
-      userId: user.id,
-      email: profile.email,
-      hasAccessToken: Boolean(tokens.access_token),
-    });
-
     logger.info("google_oauth_success", {
       flow: "login",
       email: profile.email,
       database: isDatabaseAvailable(),
     });
 
-    return res.redirect(FRONTEND_DASHBOARD_URL);
+    return res.redirect(`${env.frontendUrl}/dashboard?status=connected`);
   } catch (error) {
     const details = getErrorMessage(error);
 
@@ -386,8 +389,17 @@ export async function getSession(req, res) {
 }
 
 export async function logout(req, res) {
-  req.session.destroy(() => {
-    clearSessionCookie(res);
-    res.status(204).send();
+  await new Promise((resolve) => {
+    if (!req.session) {
+      resolve();
+      return;
+    }
+
+    req.session.destroy(() => resolve());
   });
+
+  clearSessionCookie(res);
+  clearExpressSessionCookie(res);
+
+  return res.status(204).send();
 }

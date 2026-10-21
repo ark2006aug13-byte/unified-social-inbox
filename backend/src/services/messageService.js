@@ -1,96 +1,103 @@
 import { PROVIDERS } from "../constants/providers.js";
 import { isDatabaseAvailable, prisma } from "../lib/prisma.js";
 
-const providerLookup = {
-  gmail: PROVIDERS.GMAIL,
-  instagram: PROVIDERS.INSTAGRAM,
-  whatsapp: PROVIDERS.WHATSAPP,
-  "facebook-messenger": PROVIDERS.FACEBOOK_MESSENGER,
-  facebook_messenger: PROVIDERS.FACEBOOK_MESSENGER,
-  twitter: PROVIDERS.TWITTER,
-};
-
-export function normalizeProvider(provider) {
-  if (!provider) {
-    return null;
-  }
-
-  return providerLookup[provider.toLowerCase()] || null;
-}
-
 export function serializeMessage(message) {
   return {
     id: message.id,
     externalId: message.externalId,
-    provider: message.provider.toLowerCase(),
+    provider: String(message.provider || PROVIDERS.GMAIL).toLowerCase(),
     sender: message.sender,
     subject: message.subject,
     snippet: message.snippet,
     body: message.body,
-    timestamp: message.timestamp,
-    labels: message.labels,
+    timestamp:
+      message.timestamp instanceof Date
+        ? message.timestamp.toISOString()
+        : message.timestamp || null,
+    labels: Array.isArray(message.labels) ? message.labels : [],
     threadId: message.threadId,
-    isRead: message.isRead,
-    aiCategory: message.aiCategory,
-    aiSummary: message.aiSummary,
+    isRead: Boolean(message.isRead),
+    aiCategory: message.aiCategory ?? null,
+    aiSummary: message.aiSummary ?? null,
+    urgency: message.urgency ?? null,
   };
 }
 
 export function serializeConnectedAccount(account) {
   return {
     id: account.id,
-    provider: account.provider.toLowerCase(),
+    provider: String(account.provider || "").toLowerCase(),
     status: account.status,
     connectedAt: account.createdAt,
     expiry: account.expiry,
   };
 }
 
-export async function listMessages(userId, filters = {}) {
+/**
+ * Looks up a single stored message for a user. Accepts either the internal
+ * id or the provider's external id.
+ */
+export async function getMessageById(userId, messageId) {
+  if (!isDatabaseAvailable() || !messageId) {
+    return null;
+  }
+
+  try {
+    return await prisma.message.findFirst({
+      where: {
+        userId,
+        OR: [{ id: messageId }, { externalId: messageId }],
+      },
+    });
+  } catch (_error) {
+    return null;
+  }
+}
+
+/**
+ * Counts stored conversations per provider, used by the dashboard breakdown.
+ */
+export async function countMessagesByProvider(userId) {
   if (!isDatabaseAvailable()) {
     return [];
   }
 
-  const where = {
-    userId,
-  };
+  try {
+    const grouped = await prisma.message.groupBy({
+      by: ["provider"],
+      where: { userId },
+      _count: { _all: true },
+    });
 
-  const provider = normalizeProvider(filters.provider);
-  if (provider) {
-    where.provider = provider;
+    return grouped.map((entry) => ({
+      provider: String(entry.provider).toLowerCase(),
+      count: entry._count._all,
+    }));
+  } catch (_error) {
+    return [];
   }
-
-  if (filters.category) {
-    where.aiCategory = filters.category;
-  }
-
-  if (filters.query) {
-    where.OR = [
-      { sender: { contains: filters.query, mode: "insensitive" } },
-      { subject: { contains: filters.query, mode: "insensitive" } },
-      { snippet: { contains: filters.query, mode: "insensitive" } },
-      { body: { contains: filters.query, mode: "insensitive" } },
-    ];
-  }
-
-  return prisma.message.findMany({
-    where,
-    take: Number(filters.limit || 50),
-    orderBy: {
-      timestamp: "desc",
-    },
-  });
 }
 
-export async function getMessageById(userId, messageId) {
+/**
+ * Counts stored conversations per AI category.
+ */
+export async function countMessagesByCategory(userId) {
   if (!isDatabaseAvailable()) {
-    return null;
+    return [];
   }
 
-  return prisma.message.findFirst({
-    where: {
-      userId,
-      OR: [{ id: messageId }, { externalId: messageId }],
-    },
-  });
+  try {
+    const grouped = await prisma.message.groupBy({
+      by: ["aiCategory"],
+      where: { userId, aiCategory: { not: null } },
+      _count: { _all: true },
+    });
+
+    return grouped.map((entry) => ({
+      category: entry.aiCategory,
+      count: entry._count._all,
+    }));
+  } catch (_error) {
+    return [];
+  }
 }

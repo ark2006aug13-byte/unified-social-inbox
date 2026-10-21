@@ -153,57 +153,48 @@ export async function generateReplySuggestions(message, tone = "professional") {
 export async function generateDirectReply(message, tone = "professional") {
   const client = getClient();
 
+  const directMessage = {
+    provider: "direct",
+    sender: "Unknown sender",
+    subject: null,
+    body: message,
+    snippet: String(message || "").slice(0, 180),
+  };
+
   if (!client) {
+    const reply = buildFallbackReply(directMessage, tone);
+
     return {
-      reply: buildFallbackReply(
-        {
-          provider: "direct",
-          sender: "Unknown sender",
-          subject: null,
-          body: message,
-        },
-        tone,
-      ),
+      reply,
+      suggestions: [
+        { title: "Primary reply", body: reply },
+        { title: "Short follow-up", body: buildFallbackReply(directMessage, "confident") },
+        { title: "Warmer version", body: buildFallbackReply(directMessage, "friendly") },
+      ],
     };
   }
 
   try {
-    const response = await client.responses.create({
-      model: env.openAiModel,
-      store: false,
-      instructions:
-        "You are an executive inbox copilot. Draft a concise, polished reply that is ready to paste into an email or DM.",
-      input: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: `Write a ${tone} reply to this message:\n\n${message}`,
-            },
-          ],
-        },
-      ],
-    });
+    const { suggestions } = await generateReplySuggestions(directMessage, tone);
 
     return {
-      reply: response.output_text.trim(),
+      reply: suggestions[0]?.body || "",
+      suggestions,
     };
   } catch (error) {
     logger.warn("ai_direct_reply_failed", {
       details: error instanceof Error ? error.message : "Unknown AI reply error.",
     });
 
+    const reply = buildFallbackReply(directMessage, tone);
+
     return {
-      reply: buildFallbackReply(
-        {
-          provider: "direct",
-          sender: "Unknown sender",
-          subject: null,
-          body: message,
-        },
-        tone,
-      ),
+      reply,
+      suggestions: [
+        { title: "Primary reply", body: reply },
+        { title: "Short follow-up", body: buildFallbackReply(directMessage, "confident") },
+        { title: "Warmer version", body: buildFallbackReply(directMessage, "friendly") },
+      ],
     };
   }
 }

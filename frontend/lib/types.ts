@@ -20,6 +20,13 @@ export type SessionResponse = {
   connectedAccounts: ConnectedAccount[];
 };
 
+export type ProviderKey =
+  | "gmail"
+  | "instagram"
+  | "whatsapp"
+  | "facebook"
+  | "twitter";
+
 export type Message = {
   id: string;
   externalId: string;
@@ -37,6 +44,7 @@ export type Message = {
   isRead: boolean;
   aiCategory: string | null;
   aiSummary: string | null;
+  urgency?: string | null;
   unreadCount?: number;
   conversation?: Array<{
     id: string;
@@ -52,6 +60,7 @@ export type SummaryResponse = {
   category: string;
   urgency: "low" | "medium" | "high";
   actionItems: string[];
+  persisted?: boolean;
 };
 
 export type ReplyOption = {
@@ -71,4 +80,49 @@ export type Integration = {
   status: "available" | "coming_soon";
   connected: boolean;
   connectedAt: string | null;
+  expiresAt?: string | null;
+};
+
+export type IntegrationListResponse = {
+  integrations: Integration[];
+  demoMode?: boolean;
+};
+
+export type ProviderBreakdown = {
+  provider: string;
+  count: number;
+};
+
+export type CategoryBreakdown = {
+  category: string;
+  count: number;
+};
+
+export type ActivityPoint = {
+  date: string;
+  label: string;
+  total: number;
+  unread: number;
+};
+
+export type DashboardStats = {
+  total: number;
+  unread: number;
+  categorized: number;
+  summarized: number;
+  channels: number;
+  connectedAccounts: number;
+};
+
+export type DashboardResponse = {
+  stats: DashboardStats;
+  byProvider: ProviderBreakdown[];
+  byCategory: CategoryBreakdown[];
+  activity: ActivityPoint[];
+  recent: Message[];
+};
+
+export type MessageListResponse = {
+  messages: Message[];
+  count?: number;
 };

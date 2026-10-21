@@ -7,6 +7,15 @@ function getRuntime(req) {
   };
 }
 
+function parseLimit(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 50;
+  }
+
+  return Math.min(Math.trunc(parsed), 200);
+}
+
 export async function getMessages(req, res, next) {
   try {
     const messages = await listUnifiedMessages(
@@ -15,13 +24,14 @@ export async function getMessages(req, res, next) {
         query: req.query.q?.toString() || "",
         provider: req.query.provider?.toString() || "",
         category: req.query.category?.toString() || "",
-        limit: req.query.limit ? Number(req.query.limit) : 50,
+        limit: parseLimit(req.query.limit),
       },
       getRuntime(req),
     );
 
     return res.json({
       messages,
+      count: messages.length,
     });
   } catch (error) {
     return next(error);
@@ -30,7 +40,12 @@ export async function getMessages(req, res, next) {
 
 export async function getMessage(req, res, next) {
   try {
-    const message = await getUnifiedMessageById(req.auth.sub, req.params.id, getRuntime(req));
+    const message = await getUnifiedMessageById(
+      req.auth.sub,
+      req.params.id,
+      getRuntime(req),
+    );
+
     if (!message) {
       return res.status(404).json({ error: "Message not found." });
     }

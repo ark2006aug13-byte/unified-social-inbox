@@ -4,6 +4,7 @@ import aiRoutes from "./ai.routes.js";
 import messageRoutes from "./message.routes.js";
 import integrationRoutes from "./integration.routes.js";
 import healthRoutes from "./health.routes.js";
+import dashboardRoutes from "./dashboard.routes.js";
 
 export function registerRoutes(app) {
   app.use("/health", healthRoutes);
@@ -12,4 +13,5 @@ export function registerRoutes(app) {
   app.use("/api/messages", messageRoutes);
   app.use("/api/ai", aiRoutes);
   app.use("/api/integrations", integrationRoutes);
+  app.use("/api/dashboard", dashboardRoutes);
 }

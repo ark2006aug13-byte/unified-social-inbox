@@ -11,7 +11,7 @@ dotenv.config({ path: backendEnvPath });
 
 const [
   { default: app },
-  { env, validateEnvironmentVariables },
+  { env, validateEnvironmentVariables, getBlockingEnvironmentErrors },
   { prisma, isDatabaseAvailable },
   { initializeSocket },
   { logger },
@@ -25,19 +25,42 @@ const [
 
 const environmentStatus = validateEnvironmentVariables();
 
-if (!environmentStatus.ok) {
-  logger.error("environment_validation_failed", {
-    missingRequired: environmentStatus.missingRequired,
-  });
-}
-
 if (environmentStatus.missingOptional.length > 0) {
   logger.warn("environment_validation_warning", {
     missingOptional: environmentStatus.missingOptional,
   });
 }
 
-console.log("OAuth configured:", environmentStatus.oauthConfigured);
+if (environmentStatus.usingDevelopmentFallbackSecret) {
+  logger.warn("development_fallback_secret_in_use", {
+    message:
+      "JWT_SECRET is not set. Sessions are signed with a development-only secret.",
+  });
+}
+
+const blockingErrors = getBlockingEnvironmentErrors();
+if (blockingErrors.length > 0) {
+  for (const message of blockingErrors) {
+    logger.error("environment_validation_failed", { message });
+  }
+
+  console.error("\nRefusing to start with an invalid configuration:\n");
+  for (const message of blockingErrors) {
+    console.error(`  - ${message}`);
+  }
+  console.error("\nCopy .env.example to .env and fill in the missing values.\n");
+
+  process.exit(1);
+}
+
+logger.info("backend_configured", {
+  port: env.port,
+  backendUrl: env.backendUrl,
+  googleOAuthConfigured: environmentStatus.oauthConfigured,
+  database: isDatabaseAvailable(),
+  demoMode: environmentStatus.demoMode,
+  secureCookies: env.useSecureCookies,
+});
 
 const server = http.createServer(app);
 let shuttingDown = false;
@@ -49,7 +72,6 @@ server.on("error", (error) => {
 });
 
 server.listen(env.port, () => {
-  console.log(`Backend running on port ${env.port}`);
   logger.info("backend_started", {
     port: env.port,
     backendUrl: env.backendUrl,

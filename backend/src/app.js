@@ -4,7 +4,7 @@ import express from "express";
 import session from "express-session";
 import helmet from "helmet";
 import { env } from "./config/env.js";
-import { errorHandler } from "./middleware/errorHandler.js";
+import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { registerRoutes } from "./routes/index.js";
 import { logger } from "./utils/logger.js";
 
@@ -22,6 +22,7 @@ app.use(
 app.use(helmet());
 app.use(cookieParser());
 app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 app.use(
   session({
     name: `${env.sessionCookieName}_state`,
@@ -30,8 +31,8 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: env.isProduction,
-      sameSite: env.isProduction ? "none" : "lax",
+      secure: env.useSecureCookies,
+      sameSite: env.crossSiteCookies ? "none" : "lax",
       maxAge: 1000 * 60 * 60 * 24 * 7,
     },
   }),
@@ -71,13 +72,7 @@ app.get("/api/test", (_req, res) => {
 
 registerRoutes(app);
 
-app.use("*", (_req, res) => {
-  res.status(404).json({
-    success: false,
-    message: "Route not found",
-  });
-});
-
+app.use(notFoundHandler);
 app.use(errorHandler);
 
 export default app;

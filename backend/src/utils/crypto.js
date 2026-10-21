@@ -1,13 +1,11 @@
 import crypto from "node:crypto";
-import { env } from "../config/env.js";
+import { env, validateEncryptionKey } from "../config/env.js";
 import { ApiError } from "./apiError.js";
 
 function resolveKey() {
-  if (!env.tokenEncryptionKey) {
-    throw new ApiError(
-      500,
-      "TOKEN_ENCRYPTION_KEY is required to securely store provider tokens.",
-    );
+  const keyError = validateEncryptionKey(env.tokenEncryptionKey);
+  if (keyError) {
+    throw new ApiError(500, keyError);
   }
 
   return Buffer.from(env.tokenEncryptionKey, "hex");
@@ -27,12 +25,16 @@ export function encryptSecret(value) {
   return `${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted.toString("hex")}`;
 }
 
-export function decryptSecret(payload) {
+function decryptSecret(payload) {
   if (!payload) {
     return payload;
   }
 
   const [ivHex, authTagHex, encryptedHex] = payload.split(":");
+  if (!ivHex || !authTagHex || !encryptedHex) {
+    throw new ApiError(500, "Stored provider token is malformed.");
+  }
+
   const key = resolveKey();
   const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
   decipher.setAuthTag(Buffer.from(authTagHex, "hex"));
@@ -42,4 +44,21 @@ export function decryptSecret(payload) {
   ]);
 
   return decrypted.toString("utf8");
+}
+
+/**
+ * Decrypts a stored token and returns null instead of throwing when the value
+ * cannot be read (missing key, rotated key, legacy plaintext). Callers treat
+ * `null` as "no usable credential" and fall back to a session or re-auth.
+ */
+export function tryDecryptSecret(payload) {
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    return decryptSecret(payload);
+  } catch (_error) {
+    return null;
+  }
 }

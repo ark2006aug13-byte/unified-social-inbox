@@ -18,8 +18,8 @@ export function MobileNav() {
   const pathname = usePathname();
 
   return (
-    <div className="overflow-x-auto lg:hidden">
-      <div className="flex min-w-max gap-2 rounded-[28px] border border-white/60 bg-white/80 p-2 shadow-halo backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
+    <div className="-mx-3 overflow-x-auto px-3 lg:hidden">
+      <nav className="flex min-w-max items-center gap-1.5 rounded-[22px] border border-white/60 bg-white/70 p-1.5 shadow-lift backdrop-blur dark:border-slate-800/80 dark:bg-slate-950/70">
         {navigation.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href;
@@ -29,7 +29,7 @@ export function MobileNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                "inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-medium transition",
+                "inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-medium transition",
                 active
                   ? "bg-slate-950 text-white dark:bg-white dark:text-slate-950"
                   : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900",
@@ -40,7 +40,7 @@ export function MobileNav() {
             </Link>
           );
         })}
-      </div>
+      </nav>
     </div>
   );
 }

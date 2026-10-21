@@ -1,15 +1,17 @@
 import { z } from "zod";
+import { PROVIDERS } from "../constants/providers.js";
+import { getIntegration } from "../services/integrationRegistry.js";
 import {
   fetchAndStoreGmailMessage,
+  listStoredGmailMessages,
   serializeGmailInboxMessages,
-  syncGmailMessages,
 } from "../services/gmailService.js";
-import { buildGmailConnectUrl } from "../services/oauthService.js";
 import { getMessageById, serializeMessage } from "../services/messageService.js";
+import { ApiError } from "../utils/apiError.js";
 
 const syncSchema = z.object({
-  maxResults: z.number().int().positive().max(50).optional(),
-  query: z.string().optional(),
+  maxResults: z.coerce.number().int().positive().max(50).optional(),
+  query: z.string().max(500).optional(),
 });
 
 function getGmailRuntime(req) {
@@ -19,54 +21,67 @@ function getGmailRuntime(req) {
   };
 }
 
-export async function connectGmail(req, res) {
-  res.redirect(buildGmailConnectUrl(req.auth.sub));
+function getGmailIntegration() {
+  const integration = getIntegration(PROVIDERS.GMAIL);
+
+  if (!integration) {
+    throw new ApiError(503, "The Gmail integration is not available.");
+  }
+
+  return integration;
+}
+
+export async function connectGmail(req, res, next) {
+  try {
+    const integration = getGmailIntegration();
+    const url = await integration.getConnectionUrl(req.auth.sub);
+
+    return res.redirect(url);
+  } catch (error) {
+    return next(error);
+  }
 }
 
 export async function getGmailMessages(req, res, next) {
   try {
     const userId = req.auth?.sub || req.session?.gmailUserId;
 
-    if (!req.session?.tokens || !userId) {
+    if (!userId) {
       return res.status(401).json({ error: "Authentication required" });
     }
 
-    console.log("[gmail-api] /api/gmail/messages tokens", {
-      userId,
-      hasAccessToken: Boolean(req.session.tokens?.access_token),
-      hasRefreshToken: Boolean(req.session.tokens?.refresh_token),
-    });
+    const limit = Math.min(Number(req.query.limit) || 25, 100);
+    const query = req.query.q?.toString() || "";
 
-    const messages = await syncGmailMessages(
+    const messages = await listStoredGmailMessages(
       userId,
-      {
-        maxResults: Number(req.query.limit || 10),
-        query: req.query.q?.toString() || "",
-      },
+      { limit, query },
       getGmailRuntime(req),
     );
 
     return res.json(serializeGmailInboxMessages(messages));
   } catch (error) {
-    console.error("[gmail-api] /api/gmail/messages failed", {
-      error: error instanceof Error ? error.message : "Unknown Gmail API error.",
-    });
     return next(error);
   }
 }
 
 export async function syncGmail(req, res, next) {
   try {
-    if (!req.session?.tokens && !req.auth?.sub) {
+    const userId = req.auth?.sub || req.session?.gmailUserId;
+
+    if (!userId) {
       return res.status(401).json({ error: "Authentication required" });
     }
 
-    const payload = syncSchema.parse({
-      maxResults: req.body.maxResults ? Number(req.body.maxResults) : undefined,
-      query: req.body.query,
-    });
+    const payload = syncSchema.parse(req.body || {});
+    const integration = getGmailIntegration();
 
-    const messages = await syncGmailMessages(req.auth.sub, payload, getGmailRuntime(req));
+    const messages = await integration.syncMessages(userId, {
+      maxResults: payload.maxResults || 25,
+      query: payload.query || "",
+      emit: true,
+      skipExisting: false,
+    });
 
     return res.json({
       synced: messages.length,
@@ -79,15 +94,21 @@ export async function syncGmail(req, res, next) {
 
 export async function getGmailMessage(req, res, next) {
   try {
-    if (!req.session?.tokens && !req.auth?.sub) {
+    const userId = req.auth?.sub || req.session?.gmailUserId;
+
+    if (!userId) {
       return res.status(401).json({ error: "Authentication required" });
     }
 
     const id = req.params.id;
-    let message = await getMessageById(req.auth.sub, id);
+    let message = await getMessageById(userId, id);
 
     if (!message) {
-      message = await fetchAndStoreGmailMessage(req.auth.sub, id, getGmailRuntime(req));
+      message = await fetchAndStoreGmailMessage(userId, id, getGmailRuntime(req));
+    }
+
+    if (!message) {
+      throw new ApiError(404, "Message not found.");
     }
 
     return res.json({

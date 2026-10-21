@@ -1,6 +1,37 @@
+"use client";
+
+import { MailOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Message } from "@/lib/types";
-import { cn, formatDate, formatProvider } from "@/lib/utils";
+import {
+  cn,
+  formatCategory,
+  formatRelativeTime,
+  getProviderStyle,
+  truncate,
+} from "@/lib/utils";
+
+export function MessageListSkeleton() {
+  return (
+    <div className="space-y-2.5">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div
+          key={index}
+          className="rounded-[22px] border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800 dark:bg-slate-900/40"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <Skeleton className="h-3.5 w-32" />
+            <Skeleton className="h-3 w-14" />
+          </div>
+          <Skeleton className="mt-3 h-3.5 w-3/4" />
+          <Skeleton className="mt-2 h-3 w-full" />
+          <Skeleton className="mt-1.5 h-3 w-2/3" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function MessageList({
   messages,
@@ -11,61 +42,158 @@ export function MessageList({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
+  if (messages.length === 0) {
+    return (
+      <div className="flex min-h-[200px] flex-col items-center justify-center gap-2 rounded-[22px] border border-dashed border-slate-300 px-6 text-center dark:border-slate-700">
+        <MailOpen className="h-6 w-6 text-slate-400" />
+        <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+          No conversations match
+        </p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Try a different search term, channel or category.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-3">
-      {messages.map((message) => (
-        <button
-          key={message.id}
-          onClick={() => onSelect(message.id)}
-          className={cn(
-            "w-full rounded-[26px] border p-4 text-left transition",
-            selectedId === message.id
-              ? "border-slate-950 bg-slate-950 text-white dark:border-white dark:bg-white dark:text-slate-950"
-              : "border-slate-200/80 bg-white/80 hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-900/70 dark:hover:border-slate-700 dark:hover:bg-slate-900",
-          )}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="font-medium">{message.sender}</p>
+    <ul className="space-y-2.5">
+      {messages.map((message) => {
+        const style = getProviderStyle(message.provider);
+        const Icon = style.icon;
+        const isSelected = selectedId === message.id;
+        const unread = !message.isRead;
+
+        return (
+          <li key={message.id}>
+            <button
+              type="button"
+              onClick={() => onSelect(message.id)}
+              aria-current={isSelected}
+              className={cn(
+                "group w-full rounded-[22px] border p-4 text-left transition",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400",
+                isSelected
+                  ? "border-slate-950 bg-slate-950 text-white shadow-lift dark:border-white dark:bg-white dark:text-slate-950"
+                  : "border-slate-200/70 bg-white/60 hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-900/40 dark:hover:border-slate-700 dark:hover:bg-slate-900",
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span
+                    className={cn(
+                      "grid h-8 w-8 shrink-0 place-items-center rounded-xl",
+                      isSelected
+                        ? "bg-white/15 text-white dark:bg-slate-900/10 dark:text-slate-950"
+                        : style.chip,
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span
+                      className={cn(
+                        "block truncate text-sm",
+                        unread ? "font-semibold" : "font-medium",
+                        isSelected
+                          ? "text-white dark:text-slate-950"
+                          : "text-slate-900 dark:text-slate-100",
+                      )}
+                    >
+                      {message.sender}
+                    </span>
+                    <span
+                      className={cn(
+                        "block truncate text-[11px] uppercase tracking-[0.14em]",
+                        isSelected
+                          ? "text-white/60 dark:text-slate-500"
+                          : "text-slate-400 dark:text-slate-500",
+                      )}
+                    >
+                      {style.label}
+                    </span>
+                  </span>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-2">
+                  {unread ? (
+                    <span
+                      aria-label="Unread"
+                      className={cn(
+                        "h-2 w-2 rounded-full",
+                        isSelected ? "bg-sky-400" : "bg-sky-500",
+                      )}
+                    />
+                  ) : null}
+                  <span
+                    className={cn(
+                      "whitespace-nowrap text-[11px]",
+                      isSelected
+                        ? "text-white/60 dark:text-slate-500"
+                        : "text-slate-400 dark:text-slate-500",
+                    )}
+                  >
+                    {formatRelativeTime(message.timestamp)}
+                  </span>
+                </div>
+              </div>
+
               <p
                 className={cn(
-                  "mt-1 text-xs uppercase tracking-[0.18em]",
-                  selectedId === message.id
-                    ? "text-white/70 dark:text-slate-500"
+                  "mt-3 truncate text-sm",
+                  unread ? "font-semibold" : "font-medium",
+                  isSelected
+                    ? "text-white dark:text-slate-950"
+                    : "text-slate-900 dark:text-slate-100",
+                )}
+              >
+                {message.subject || "(No subject)"}
+              </p>
+
+              <p
+                className={cn(
+                  "mt-1.5 line-clamp-2 text-xs leading-5",
+                  isSelected
+                    ? "text-white/70 dark:text-slate-600"
                     : "text-slate-500 dark:text-slate-400",
                 )}
               >
-                {formatProvider(message.provider)}
+                {truncate(message.snippet || message.body || "", 150)}
               </p>
-            </div>
-            <span
-              className={cn(
-                "text-xs",
-                selectedId === message.id
-                  ? "text-white/70 dark:text-slate-500"
-                  : "text-slate-500 dark:text-slate-400",
-              )}
-            >
-              {formatDate(message.timestamp)}
-            </span>
-          </div>
-          <p className="mt-4 text-sm font-medium">{message.subject || "(No subject)"}</p>
-          <p
-            className={cn(
-              "mt-2 line-clamp-3 text-sm leading-7",
-              selectedId === message.id
-                ? "text-white/80 dark:text-slate-600"
-                : "text-slate-600 dark:text-slate-400",
-            )}
-          >
-            {message.snippet || message.body}
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {message.aiCategory ? <Badge>{message.aiCategory}</Badge> : null}
-            {!message.isRead ? <Badge tone="warning">Unread</Badge> : null}
-          </div>
-        </button>
-      ))}
-    </div>
+
+              {message.aiCategory || unread ? (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  {message.aiCategory ? (
+                    <Badge
+                      plain
+                      className={
+                        isSelected
+                          ? "bg-white/15 text-white dark:bg-slate-900/10 dark:text-slate-950"
+                          : undefined
+                      }
+                    >
+                      {formatCategory(message.aiCategory)}
+                    </Badge>
+                  ) : null}
+                  {unread ? (
+                    <Badge
+                      plain
+                      tone={isSelected ? undefined : "info"}
+                      className={
+                        isSelected
+                          ? "bg-sky-400/20 text-sky-100 dark:bg-sky-900/20 dark:text-sky-700"
+                          : undefined
+                      }
+                    >
+                      Unread
+                    </Badge>
+                  ) : null}
+                </div>
+              ) : null}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

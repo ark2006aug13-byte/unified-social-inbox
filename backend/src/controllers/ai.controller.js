@@ -30,10 +30,47 @@ const replySchema = z
     message: "messageId or message is required",
   });
 
+async function persistSummary(messageId, summary) {
+  if (!isDatabaseAvailable() || !messageId) {
+    return false;
+  }
+
+  try {
+    await prisma.message.update({
+      where: { id: messageId },
+      data: {
+        aiSummary: summary.summary,
+        aiCategory: summary.category,
+      },
+    });
+
+    return true;
+  } catch (_error) {
+    // The message may live outside the database (placeholder conversation) or
+    // belong to another provider. A failed persist must not fail the request.
+    return false;
+  }
+}
+
 export async function summarizeMessage(req, res, next) {
   try {
     const payload = summarySchema.parse(req.body);
 
+    // Prefer the stored message so the summary can be persisted and the
+    // dashboard metrics stay accurate.
+    if (payload.messageId) {
+      const message = await getMessageById(req.auth.sub, payload.messageId);
+
+      if (message) {
+        const summary = await generateMessageSummary(serializeMessage(message));
+        const persisted = await persistSummary(message.id, summary);
+
+        return res.json({ ...summary, persisted });
+      }
+    }
+
+    // Fall back to the raw payload. Placeholder conversations and messages
+    // that are not stored yet still get a useful summary, just not persisted.
     if (payload.message) {
       const summary = await generateMessageSummary({
         provider: payload.provider || "direct",
@@ -43,28 +80,10 @@ export async function summarizeMessage(req, res, next) {
         snippet: payload.message.slice(0, 180),
       });
 
-      return res.json(summary);
+      return res.json({ ...summary, persisted: false });
     }
 
-    const message = await getMessageById(req.auth.sub, payload.messageId);
-
-    if (!message) {
-      throw new ApiError(404, "Message not found for AI summary.");
-    }
-
-    const summary = await generateMessageSummary(serializeMessage(message));
-
-    if (isDatabaseAvailable() && message.id) {
-      await prisma.message.update({
-        where: { id: message.id },
-        data: {
-          aiSummary: summary.summary,
-          aiCategory: summary.category,
-        },
-      });
-    }
-
-    return res.json(summary);
+    throw new ApiError(404, "Message not found for AI summary.");
   } catch (error) {
     return next(error);
   }
@@ -74,22 +93,33 @@ export async function suggestReply(req, res, next) {
   try {
     const payload = replySchema.parse(req.body);
 
+    if (payload.messageId) {
+      const message = await getMessageById(req.auth.sub, payload.messageId);
+
+      if (message) {
+        const response = await generateReplySuggestions(
+          serializeMessage(message),
+          payload.tone,
+        );
+        const suggestions = response.suggestions || [];
+
+        return res.json({
+          reply: suggestions[0]?.body || "",
+          suggestions,
+        });
+      }
+    }
+
     if (payload.message) {
       const response = await generateDirectReply(payload.message, payload.tone);
-      return res.json(response);
+
+      return res.json({
+        reply: response.reply || "",
+        suggestions: response.suggestions || [],
+      });
     }
 
-    const message = await getMessageById(req.auth.sub, payload.messageId);
-
-    if (!message) {
-      throw new ApiError(404, "Message not found for AI reply.");
-    }
-
-    const response = await generateReplySuggestions(serializeMessage(message), payload.tone);
-    return res.json({
-      reply: response.suggestions[0]?.body || "",
-      suggestions: response.suggestions,
-    });
+    throw new ApiError(404, "Message not found for AI reply.");
   } catch (error) {
     return next(error);
   }
