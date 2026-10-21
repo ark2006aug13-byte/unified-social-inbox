@@ -2,6 +2,7 @@
 
 import { MailOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Message } from "@/lib/types";
 import {
@@ -18,7 +19,7 @@ export function MessageListSkeleton() {
       {Array.from({ length: 6 }).map((_, index) => (
         <div
           key={index}
-          className="rounded-[22px] border border-slate-200/70 bg-white/60 p-4 dark:border-slate-800 dark:bg-slate-900/40"
+          className="rounded-[22px] border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800 dark:bg-slate-900/50"
         >
           <div className="flex items-center justify-between gap-3">
             <Skeleton className="h-3.5 w-32" />
@@ -44,15 +45,12 @@ export function MessageList({
 }) {
   if (messages.length === 0) {
     return (
-      <div className="flex min-h-[200px] flex-col items-center justify-center gap-2 rounded-[22px] border border-dashed border-slate-300 px-6 text-center dark:border-slate-700">
-        <MailOpen className="h-6 w-6 text-slate-400" />
-        <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
-          No conversations match
-        </p>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          Try a different search term, channel or category.
-        </p>
-      </div>
+      <EmptyState
+        icon={<MailOpen className="h-6 w-6" />}
+        title="No conversations match"
+        description="Try a different search term, channel or category."
+        minHeight="200px"
+      />
     );
   }
 
@@ -75,7 +73,7 @@ export function MessageList({
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400",
                 isSelected
                   ? "border-slate-950 bg-slate-950 text-white shadow-lift dark:border-white dark:bg-white dark:text-slate-950"
-                  : "border-slate-200/70 bg-white/60 hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-900/40 dark:hover:border-slate-700 dark:hover:bg-slate-900",
+                  : "border-slate-200/70 bg-white/70 hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-900/50 dark:hover:border-slate-700 dark:hover:bg-slate-900",
               )}
             >
               <div className="flex items-start justify-between gap-3">

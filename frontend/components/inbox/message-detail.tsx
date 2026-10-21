@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, Copy, Mail, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Message } from "@/lib/types";
 import {
@@ -50,18 +51,12 @@ export function MessageDetail({
 
   if (!message) {
     return (
-      <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 rounded-[28px] border border-dashed border-slate-300 bg-white/40 px-6 text-center dark:border-slate-700 dark:bg-slate-900/30">
-        <div className="grid h-14 w-14 place-items-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-          <Mail className="h-6 w-6" />
-        </div>
-        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-          Select a conversation
-        </h3>
-        <p className="max-w-sm text-sm leading-6 text-slate-500 dark:text-slate-400">
-          Pick a message on the left to read the full thread, see the AI summary
-          and draft a reply.
-        </p>
-      </div>
+      <EmptyState
+        icon={<Mail className="h-6 w-6" />}
+        title="Select a conversation"
+        description="Pick a message on the left to read the full thread, see the AI summary and draft a reply."
+        minHeight="320px"
+      />
     );
   }
 

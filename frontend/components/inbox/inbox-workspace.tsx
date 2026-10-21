@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
+import { PageHeader } from "@/components/ui/page-header";
 import { AiCopilot } from "@/components/inbox/ai-copilot";
 import { InboxFilters, SearchField } from "@/components/inbox/inbox-filters";
 import { MessageList, MessageListSkeleton } from "@/components/inbox/message-list";
@@ -406,21 +407,12 @@ export function InboxWorkspace({
 
   return (
     <div className="space-y-4">
-      <Card className="space-y-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
-              {lockedProvider ? "Provider view" : "Unified inbox"}
-            </p>
-            <h2 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-950 dark:text-slate-100">
-              {title}
-            </h2>
-            <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-400">
-              {subtitle}
-            </p>
-          </div>
-
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[320px] lg:max-w-md">
+      <PageHeader
+        eyebrow={lockedProvider ? "Provider view" : "Unified inbox"}
+        title={title}
+        subtitle={subtitle}
+        actions={
+          <>
             <SearchField value={searchInput} onChange={setSearchInput} />
             <div className="flex items-center gap-2">
               <Button
@@ -445,9 +437,9 @@ export function InboxWorkspace({
                 to move
               </span>
             </div>
-          </div>
-        </div>
-
+          </>
+        }
+      >
         <InboxFilters
           provider={provider}
           category={category}
@@ -456,7 +448,7 @@ export function InboxWorkspace({
           lockedProvider={lockedProvider}
           resultCount={messages.length}
         />
-      </Card>
+      </PageHeader>
 
       {listError ? (
         <ErrorState

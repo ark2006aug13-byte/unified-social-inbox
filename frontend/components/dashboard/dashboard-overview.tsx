@@ -28,10 +28,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
+import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ActivityChart } from "@/components/dashboard/activity-chart";
 import { BreakdownList } from "@/components/dashboard/breakdown-list";
 import { MetricCard } from "@/components/dashboard/metric-card";
+
+const SKELETON_CARD =
+  "rounded-[28px] border border-white/60 bg-white/70 dark:border-slate-800/80 dark:bg-slate-950/70";
 
 export function DashboardOverview() {
   const { session, loading: sessionLoading, login } = useSession();
@@ -123,13 +127,16 @@ export function DashboardOverview() {
 
   if (sessionLoading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div
-            key={index}
-            className="h-[168px] animate-pulse rounded-[26px] border border-white/60 bg-white/70 dark:border-slate-800/80 dark:bg-slate-950/70"
-          />
-        ))}
+      <div className="space-y-4">
+        <div className={cn("h-[152px] animate-pulse", SKELETON_CARD)} />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className={cn("h-[168px] animate-pulse", SKELETON_CARD)}
+            />
+          ))}
+        </div>
       </div>
     );
   }
@@ -171,12 +178,41 @@ export function DashboardOverview() {
 
   return (
     <div className="space-y-4">
+      <PageHeader
+        eyebrow="Workspace overview"
+        title="Your conversation pulse"
+        subtitle="A live view of every message flowing through your channels — volume, unread backlog, AI coverage and readiness."
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void loadDashboard()}
+              loading={loading && !data}
+              className="w-full sm:w-auto"
+            >
+              {!loading || data ? <RefreshCcw className="h-3.5 w-3.5" /> : null}
+              Refresh
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void handleSync()}
+              loading={syncing}
+              className="w-full sm:w-auto"
+            >
+              {!syncing ? <RefreshCcw className="h-3.5 w-3.5" /> : null}
+              {syncing ? "Syncing…" : "Sync Gmail"}
+            </Button>
+          </>
+        }
+      />
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {loading && !data ? (
           Array.from({ length: 4 }).map((_, index) => (
             <div
               key={index}
-              className="h-[168px] animate-pulse rounded-[26px] border border-white/60 bg-white/70 dark:border-slate-800/80 dark:bg-slate-950/70"
+              className={cn("h-[168px] animate-pulse", SKELETON_CARD)}
             />
           ))
         ) : (
@@ -222,17 +258,7 @@ export function DashboardOverview() {
           <CardHeader
             title="Conversation volume"
             description="Messages received over the last seven days."
-            action={
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => void handleSync()}
-                loading={syncing}
-              >
-                {!syncing ? <RefreshCcw className="h-3.5 w-3.5" /> : null}
-                {syncing ? "Syncing" : "Sync"}
-              </Button>
-            }
+            action={<Badge plain>Last 7 days</Badge>}
           />
 
           {loading && !data ? (
@@ -292,7 +318,7 @@ export function DashboardOverview() {
           {loading && recent.length === 0 ? (
             <div className="space-y-2.5">
               {Array.from({ length: 4 }).map((_, index) => (
-                <Skeleton key={index} className="h-16 w-full rounded-[20px]" />
+                <Skeleton key={index} className="h-16 w-full rounded-[22px]" />
               ))}
             </div>
           ) : recent.length === 0 ? (
@@ -311,7 +337,7 @@ export function DashboardOverview() {
                   <li key={message.id}>
                     <Link
                       href="/inbox"
-                      className="flex items-start gap-3 rounded-[20px] border border-slate-200/70 bg-white/60 p-3.5 transition hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-900/40 dark:hover:border-slate-700 dark:hover:bg-slate-900"
+                      className="flex items-start gap-3 rounded-[22px] border border-slate-200/70 bg-white/70 p-3.5 transition hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-900/50 dark:hover:border-slate-700 dark:hover:bg-slate-900"
                     >
                       <span
                         className={cn(

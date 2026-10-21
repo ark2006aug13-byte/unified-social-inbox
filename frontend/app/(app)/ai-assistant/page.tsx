@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
 
 const EXAMPLES = [
   "Hi team - just checking in on the launch timeline for the spring campaign.",
@@ -77,8 +78,15 @@ export default function AiAssistantPage() {
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <Card className="space-y-5">
+    <div className="space-y-4">
+      <PageHeader
+        eyebrow="Assistant"
+        title="Summaries and reply drafts"
+        subtitle="Paste any message to classify it, pull out action items and generate reply options you can send straight away."
+      />
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <Card className="space-y-5">
         <CardHeader
           title="Try the assistant"
           description="Paste any message to classify it or generate reply options."
@@ -224,7 +232,8 @@ export default function AiAssistantPage() {
             stored on your account when you are signed in.
           </p>
         ) : null}
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 }

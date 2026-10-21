@@ -16,6 +16,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 
 function DetailRow({
   label,
@@ -65,73 +66,84 @@ export function SettingsPanel() {
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
-      <Card className="space-y-5">
-        <CardHeader
-          title="Account"
-          description="Your identity and connected providers."
-          action={
-            <span className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              <UserRound className="h-5 w-5" />
-            </span>
-          }
-        />
-
-        {session?.authenticated ? (
-          <>
-            <div className="flex items-center gap-3.5 rounded-[22px] border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800 dark:bg-slate-900/50">
-              <Avatar
-                name={session.user?.name}
-                src={session.user?.avatarUrl}
-                size="lg"
-              />
-              <div className="min-w-0">
-                <p className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">
-                  {session.user?.name || "Google User"}
-                </p>
-                <p className="truncate text-sm text-slate-500 dark:text-slate-400">
-                  {session.user?.email}
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <DetailRow label="User id" value={session.user?.id || "—"} mono />
-              <DetailRow
-                label="Member since"
-                value={
-                  session.user?.createdAt
-                    ? new Date(session.user.createdAt).toLocaleDateString()
-                    : "—"
-                }
-              />
-              <DetailRow
-                label="Connected providers"
-                value={String(session.connectedAccounts?.length ?? 0)}
-              />
-            </div>
-
+    <div className="space-y-4">
+      <PageHeader
+        eyebrow="Workspace"
+        title="Account and runtime"
+        subtitle="Your identity, connected providers and the configuration this browser is using to reach the API."
+        actions={
+          session?.authenticated ? (
             <Button
               variant="secondary"
+              size="sm"
               onClick={() => void handleLogout()}
               className="w-full sm:w-auto"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-3.5 w-3.5" />
               Sign out
             </Button>
-          </>
-        ) : (
-          <div className="space-y-4 py-4 text-center">
-            <p className="text-sm leading-6 text-slate-600 dark:text-slate-400">
-              Sign in to manage connected accounts and workspace preferences.
-            </p>
-            <Button onClick={login} size="lg">
-              <LogIn className="h-4 w-4" />
-              Continue with Google
-            </Button>
-          </div>
-        )}
-      </Card>
+          ) : null
+        }
+      />
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card className="space-y-5">
+          <CardHeader
+            title="Account"
+            description="Your identity and connected providers."
+            action={
+              <span className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                <UserRound className="h-5 w-5" />
+              </span>
+            }
+          />
+
+          {session?.authenticated ? (
+            <>
+              <div className="flex items-center gap-3.5 rounded-[22px] border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800 dark:bg-slate-900/50">
+                <Avatar
+                  name={session.user?.name}
+                  src={session.user?.avatarUrl}
+                  size="lg"
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">
+                    {session.user?.name || "Google User"}
+                  </p>
+                  <p className="truncate text-sm text-slate-500 dark:text-slate-400">
+                    {session.user?.email}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <DetailRow label="User id" value={session.user?.id || "—"} mono />
+                <DetailRow
+                  label="Member since"
+                  value={
+                    session.user?.createdAt
+                      ? new Date(session.user.createdAt).toLocaleDateString()
+                      : "—"
+                  }
+                />
+                <DetailRow
+                  label="Connected providers"
+                  value={String(session.connectedAccounts?.length ?? 0)}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="space-y-4 py-4 text-center">
+              <p className="text-sm leading-6 text-slate-600 dark:text-slate-400">
+                Sign in to manage connected accounts and workspace preferences.
+              </p>
+              <Button onClick={login} size="lg">
+                <LogIn className="h-4 w-4" />
+                Continue with Google
+              </Button>
+            </div>
+          )}
+        </Card>
 
       <div className="space-y-4">
         <Card className="space-y-5">
@@ -213,6 +225,7 @@ export function SettingsPanel() {
             </Badge>
           </div>
         </Card>
+      </div>
       </div>
     </div>
   );

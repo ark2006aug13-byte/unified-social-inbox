@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
+import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatDate, getProviderStyle } from "@/lib/utils";
 
@@ -105,6 +106,24 @@ export function IntegrationsGrid() {
 
   return (
     <div className="space-y-4">
+      <PageHeader
+        eyebrow="Channels"
+        title="Connect your channels"
+        subtitle="Every platform you connect is ingested into the same unified inbox, with labels, threads and AI enrichment applied automatically."
+        actions={
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void load()}
+            loading={loading}
+            className="w-full sm:w-auto"
+          >
+            {!loading ? <RefreshCcw className="h-3.5 w-3.5" /> : null}
+            Refresh
+          </Button>
+        }
+      />
+
       {demoMode ? (
         <div className="flex items-start gap-3 rounded-[24px] border border-amber-200/70 bg-amber-50/70 p-4 dark:border-amber-500/25 dark:bg-amber-950/25">
           <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />

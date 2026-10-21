@@ -29,7 +29,7 @@ export function MetricCard({
   };
 
   return (
-    <div className="group relative overflow-hidden rounded-[26px] border border-white/60 bg-white/70 p-5 shadow-lift backdrop-blur transition hover:shadow-halo dark:border-slate-800/80 dark:bg-slate-950/70">
+    <div className="group relative overflow-hidden rounded-[28px] border border-white/60 bg-white/75 p-5 shadow-halo backdrop-blur transition hover:shadow-lift dark:border-slate-800/80 dark:bg-slate-950/70">
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
           {label}
