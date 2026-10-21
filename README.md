@@ -32,7 +32,7 @@ npm run prisma:migrate
 npm run dev
 ```
 
-Open http://localhost:3000 and sign in with Google.
+Open http://localhost:5000 and sign in with Google.
 
 Full walkthrough: [`docs/setup.md`](docs/setup.md).
 

@@ -53,7 +53,7 @@ npm run prisma:migrate
 npm run dev
 ```
 
-- Frontend: http://localhost:3000
+- Frontend: http://localhost:5000
 - Backend: http://localhost:4000
 - Health: http://localhost:4000/health
 
@@ -73,7 +73,7 @@ deterministic fallback so the UI can still be exercised end to end.
 
 ## 8. Test the product flow
 
-1. Open http://localhost:3000
+1. Open http://localhost:5000
 2. Log in with Google
 3. Go to **Integrations** and connect Gmail
 4. Run a sync from the **Inbox** or **Dashboard**

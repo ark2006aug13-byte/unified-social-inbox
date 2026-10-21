@@ -40,7 +40,7 @@ function readBoolean(value, fallback = false) {
   return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase());
 }
 
-const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5000";
 
 export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
